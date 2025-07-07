@@ -17,13 +17,10 @@ sort -k1,1 -k2,2n ${OutputFold}/${SampleName}/${SampleName}.pval.signal.bedgraph
 bedGraphToBigWig ${OutputFold}/${SampleName}/${SampleName}.pval.signal.sort.bedgraph /lustre/home/zhangfy/fetalmonkey/Macaque.t-to-t/macaque_chromSize.txt ${OutputFold}/${SampleName}/${SampleName}.pval.signal.bw
 
 
-InputFold="/lustre/home/zhangfy/fetalmonkey/atac/06.merge/ADR/"
+InputFold="/lustre/home/zhangfy/fetalmonkey/rna/03.bam/ADR/"
 OutputFold="./RNA/"
-SampleName="ATAC-RM06050A_E80-ADR"
+SampleName="RNA-seq-RM06050A_E80-ADR"
 
-/lustre/home/zhangfy/Pipeline/bin/STAR --runMode inputAlignmentsFromBAM --inputBAMfile ${InputFold}/${SampleName}Aligned.sortedByCoord.out.bam --outWigType bedGraph --outWigStrand Unstranded --outFileNamePrefix ${OutputFold}/${SampleName}
-
-/lustre/home/zhangfy/Pipeline/bin/bedSort Signal.UniqueMultiple.str1.out.bg Signal.UniqueMultiple.str1.out.sorted.bg
-/lustre/home/zhangfy/Pipeline/bin/bedGraphToBigWig Signal.UniqueMultiple.str1.out.sorted.bg /lustre/home/zhangfy/Pipeline/bin/Macaca.chrom.sizes ${sample}_minusAll.bw
-/lustre/home/zhangfy/Pipeline/bin/bedSort Signal.UniqueMultiple.str2.out.bg Signal.UniqueMultiple.str2.out.sorted.bg
-/lustre/home/zhangfy/Pipeline/bin/bedGraphToBigWig Signal.UniqueMultiple.str2.out.sorted.bg /lustre/home/zhangfy/Pipeline/bin/Macaca.chrom.sizes ${sample}_plusAll.bw
+/lustre/home/zhangfy/Pipeline/bin/STAR --runMode inputAlignmentsFromBAM --inputBAMfile ${InputFold}/${SampleName}Aligned.sortedByCoord.out.bam --outWigType bedGraph --outWigStrand Unstranded --outFileNamePrefix ${OutputFold}/${SampleName}.
+/lustre/home/zhangfy/Pipeline/bin/bedSort ${OutputFold}/${SampleName}.Signal.UniqueMultiple.str1.out.bg ${OutputFold}/${SampleName}.Signal.UniqueMultiple.str1.out.sorted.bg
+/lustre/home/zhangfy/Pipeline/bin/bedGraphToBigWig ${OutputFold}/${SampleName}.Signal.UniqueMultiple.str1.out.sorted.bg /lustre/home/zhangfy/fetalmonkey/Macaque.t-to-t/macaque_chromSize.txt ${OutputFold}/${SampleName}.bw
