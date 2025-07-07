@@ -1,6 +1,6 @@
 
 InputFold="/lustre/home/zhangfy/fetalmonkey/atac/06.merge/ADR/"
-OutputFold="./Test/"
+OutputFold="./ATAC/"
 SampleName="ATAC-RM06050A_E80-ADR"
 
 bamToBed -i ${InputFold}/${SampleName}.bam > ${OutputFold}/${SampleName}.bed
@@ -15,3 +15,15 @@ sval=`awk -v num="$reads_num" 'BEGIN {print num / 1000000}'`
 bedtools slop -i ${OutputFold}/${SampleName}/${SampleName}_ppois.bdg -g /lustre/home/zhangfy/fetalmonkey/Macaque.t-to-t/macaque_chromSize.txt -b 0 | bedClip stdin /lustre/home/zhangfy/fetalmonkey/Macaque.t-to-t/macaque_chromSize.txt ${OutputFold}/${SampleName}/${SampleName}.pval.signal.bedgraph
 sort -k1,1 -k2,2n ${OutputFold}/${SampleName}/${SampleName}.pval.signal.bedgraph | awk 'BEGIN{{OFS="\\t"}}{{if (NR==1 || NR>1 && (prev_chr!=$1 || prev_chr==$1 && prev_chr_e<=$2)) {{print $0}}; prev_chr=$1; prev_chr_e=$3;}}' > ${OutputFold}/${SampleName}/${SampleName}.pval.signal.sort.bedgraph
 bedGraphToBigWig ${OutputFold}/${SampleName}/${SampleName}.pval.signal.sort.bedgraph /lustre/home/zhangfy/fetalmonkey/Macaque.t-to-t/macaque_chromSize.txt ${OutputFold}/${SampleName}/${SampleName}.pval.signal.bw
+
+
+InputFold="/lustre/home/zhangfy/fetalmonkey/atac/06.merge/ADR/"
+OutputFold="./RNA/"
+SampleName="ATAC-RM06050A_E80-ADR"
+
+/lustre/home/zhangfy/Pipeline/bin/STAR --runMode inputAlignmentsFromBAM --inputBAMfile ${InputFold}/${SampleName}Aligned.sortedByCoord.out.bam --outWigType bedGraph --outWigStrand Unstranded --outFileNamePrefix ${OutputFold}/${SampleName}
+
+/lustre/home/zhangfy/Pipeline/bin/bedSort Signal.UniqueMultiple.str1.out.bg Signal.UniqueMultiple.str1.out.sorted.bg
+/lustre/home/zhangfy/Pipeline/bin/bedGraphToBigWig Signal.UniqueMultiple.str1.out.sorted.bg /lustre/home/zhangfy/Pipeline/bin/Macaca.chrom.sizes ${sample}_minusAll.bw
+/lustre/home/zhangfy/Pipeline/bin/bedSort Signal.UniqueMultiple.str2.out.bg Signal.UniqueMultiple.str2.out.sorted.bg
+/lustre/home/zhangfy/Pipeline/bin/bedGraphToBigWig Signal.UniqueMultiple.str2.out.sorted.bg /lustre/home/zhangfy/Pipeline/bin/Macaca.chrom.sizes ${sample}_plusAll.bw
