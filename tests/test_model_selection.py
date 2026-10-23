@@ -71,7 +71,11 @@ class ModelSelectionTests(unittest.TestCase):
         self.loader.reset_mock()
         self.score.reset_mock(side_effect=True)
         self.score.return_value = (0.7, 0.6, 0.5, 0.4, 0.3, 0.2)
-        primformer.run_eval(self.args)
+        eval_args = primformer.parse_args([
+            "--mode", "eval", "--checkpoint-dir", str(self.root),
+            "--eval-output", str(self.root / "evaluation.tsv"),
+        ])
+        primformer.run_eval(eval_args)
         self.loader.assert_called_once_with("Human", "test")
         self.score.assert_called_once_with(saved_prefix, self.dataset)
         rows = (self.root / "evaluation.tsv").read_text().splitlines()

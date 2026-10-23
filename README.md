@@ -63,7 +63,7 @@ Run training with the unified entry point:
 python Primformer.py --mode train \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
   --checkpoint-name MeHSA \
-  --total-steps 60000 \
+  --total-steps 150000 \
   --batch-size 32 \
   --learning-rate 0.0001
 ```
@@ -80,7 +80,7 @@ python Primformer.py --mode train --help
 
 Common options include:
 
-- `--total-steps`: total optimization steps, default `60000`.
+- `--total-steps`: total optimization steps, default `150000`.
 - `--batch-size`: global batch size, default `32`.
 - `--save-every`: checkpoint interval, default `1000`.
 - `--learning-rate-decay-steps`: decay interval, default `10000`.
@@ -96,7 +96,7 @@ python Primformer.py --mode validation \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
   --checkpoint-name MeHSA \
   --val-start 1000 \
-  --val-stop 60000 \
+  --val-stop 150000 \
   --val-interval 1000 \
   --val-output validation.tsv
 ```
@@ -108,7 +108,9 @@ are skipped with a message; non-finite `Val_All` scores cannot win. Validation
 fails if no eligible checkpoint is found. Test data is not read during selection.
 
 `validation.tsv` contains `Steps`, `Val_All`, `Val_CAGE`, `Val_RNA`, `Val_ATAC`,
-`Val_ChIPH`, and `Val_ChIPT`. Each run overwrites this table.
+`Val_ChIPH`, and `Val_ChIPT`. Each run overwrites this table. By default,
+validation scans steps `1000` through `150000` (inclusive), every `1000` steps.
+
 After a successful scan, the selected checkpoint is copied into
 `<checkpoint-dir>/best_model/`, alongside `selection.json`, which records the
 selected step, validation metrics, and dataset. This copy remains available even
@@ -122,20 +124,13 @@ Run evaluation after validation has selected the final model:
 ```bash
 python Primformer.py --mode eval \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
-<<<<<<< HEAD
   --eval-output evaluation.tsv
-=======
-  --checkpoint-name MeHSA \
-  --eval-start 1000 \
-  --eval-stop 60000 \
-  --eval-interval 1000 \
-  --eval-output Pimfomer_loss.err
->>>>>>> b59e0505dc4408fa46c96c3d58f45407ddb30d61
 ```
 
 Evaluation reads `best_model/selection.json`, restores only the selected
-checkpoint, and runs once over the complete `tfrecords/test-*.tfr` split. It does
-not scan checkpoints or select a model using test performance. Use the same
+checkpoint, and runs once over the complete `tfrecords/test-*.tfr` split.
+No start, stop, interval, or checkpoint-name arguments are needed for evaluation.
+Use the same
 `--human-dataset` as validation (default `Human`). Run training and validation
 sequentially so candidate checkpoints remain stable during selection.
 
@@ -145,10 +140,8 @@ table. These final predictive-performance metrics are Pearson correlation
 coefficients, not classification accuracy percentages. Undefined group
 correlations may be `nan`; a non-finite `Test_All` causes evaluation to fail.
 
-The former checkpoint-scan options `--eval-start`, `--eval-stop`, and
-`--eval-interval` are now `--val-start`, `--val-stop`, and `--val-interval`.
-The `--max-eval-steps` option has been removed: validation and final evaluation
-always use their complete splits.
+The `--val-start`, `--val-stop`, and `--val-interval` options apply only to
+validation. Validation and final evaluation always use their complete splits.
 
 Show all command-line options:
 
