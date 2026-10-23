@@ -80,7 +80,7 @@ python Primformer.py --mode train --help
 
 Common options include:
 
-- `--total-steps`: total optimization steps, default `60000`.
+- `--total-steps`: total optimization steps, default `150000`.
 - `--batch-size`: global batch size, default `32`.
 - `--save-every`: checkpoint interval, default `1000`.
 - `--learning-rate-decay-steps`: decay interval, default `10000`.
