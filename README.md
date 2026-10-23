@@ -63,7 +63,7 @@ Run training with the unified entry point:
 python Primformer.py --mode train \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
   --checkpoint-name MeHSA \
-  --total-steps 150000 \
+  --total-steps 60000 \
   --batch-size 32 \
   --learning-rate 0.0001
 ```
@@ -80,7 +80,7 @@ python Primformer.py --mode train --help
 
 Common options include:
 
-- `--total-steps`: total optimization steps, default `150000`.
+- `--total-steps`: total optimization steps, default `60000`.
 - `--batch-size`: global batch size, default `32`.
 - `--save-every`: checkpoint interval, default `1000`.
 - `--learning-rate-decay-steps`: decay interval, default `10000`.
@@ -127,7 +127,7 @@ python Primformer.py --mode eval \
 =======
   --checkpoint-name MeHSA \
   --eval-start 1000 \
-  --eval-stop 150000 \
+  --eval-stop 60000 \
   --eval-interval 1000 \
   --eval-output Pimfomer_loss.err
 >>>>>>> b59e0505dc4408fa46c96c3d58f45407ddb30d61
