@@ -63,7 +63,7 @@ Run training with the unified entry point:
 python Primformer.py --mode train \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
   --checkpoint-name MeHSA \
-  --total-steps 60000 \
+  --total-steps 150000 \
   --batch-size 32 \
   --learning-rate 0.0001
 ```
@@ -96,7 +96,7 @@ python Primformer.py --mode eval \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
   --checkpoint-name MeHSA \
   --eval-start 1000 \
-  --eval-stop 60000 \
+  --eval-stop 150000 \
   --eval-interval 1000 \
   --eval-output Pimfomer_loss.err
 ```
