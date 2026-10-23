@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import json
+import math
 import os
-from typing import Iterable, Optional, Sequence
+from typing import Optional, Sequence
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -12,11 +14,7 @@ os.chdir(SCRIPT_DIR)
 DEFAULT_HEADS_CHANNELS = {"human1": 5544, "monkey": 3702}
 DEFAULT_CHECKPOINT_DIR = "/home/users/zyfeng/DataSet/SavedModel/FullAdult/"
 DEFAULT_CHECKPOINT_NAME = "MeHSA"
-DEFAULT_EVAL_OUTPUT = "Pimfomer_loss.err"
-EVAL_HEADER = (
-    "Steps\tVal_All\tVal_CAGE\tVal_RNA\tVal_ATAC\tVal_ChIPH\tVal_ChIPT\t"
-    "Test_CAGE\tTest_RNA\tTest_ATAC\tTest_ChIPH\tTest_ChIPT\n"
-)
+METRIC_NAMES = ("All", "CAGE", "RNA", "ATAC", "ChIPH", "ChIPT")
 
 tf = None
 tqdm = None
@@ -95,18 +93,6 @@ def restore_latest_checkpoint(
     checkpoint_manager.checkpoint.restore(latest_checkpoint)
     print(f"Restored checkpoint from step {current_step}")
     return current_step
-
-
-def restore_checkpoint_at_step(
-    checkpoint_manager: tf.train.CheckpointManager,
-    checkpoint_dir: str,
-    checkpoint_name: str,
-    step: int,
-) -> None:
-    latest_checkpoint = os.path.join(checkpoint_dir, f"{checkpoint_name}-{step}")
-    current_step = int(os.path.basename(latest_checkpoint).split("-")[-1])
-    print(f"Restored checkpoint from step {current_step}")
-    checkpoint_manager.checkpoint.restore(latest_checkpoint).expect_partial()
 
 
 def shuffle_dataset(
@@ -270,59 +256,114 @@ def run_train(args: argparse.Namespace) -> None:
             checkpoint_manager.save(checkpoint_number=global_step)
 
 
-def eval_steps(args: argparse.Namespace) -> Iterable[int]:
-    return range(args.eval_start, args.eval_stop + 1, args.eval_interval)
+def selection_path(args: argparse.Namespace) -> str:
+    return os.path.join(args.checkpoint_dir, "best_model", "selection.json")
+
+
+def checkpoint_files(prefix: str):
+    shards = sorted(tf.io.gfile.glob(prefix + ".data-*-of-*"))
+    if not tf.io.gfile.exists(prefix + ".index") or not shards:
+        raise FileNotFoundError(f"Checkpoint index or data shards missing: {prefix}")
+    return [prefix + ".index", *shards]
+
+
+def score_checkpoint(prefix: str, dataset):
+    checkpoint_files(prefix)
+    model = build_model()
+    # Training checkpoints also contain optimizer state, which inference does not need.
+    checkpoint = tf.train.Checkpoint(model=model)
+    status = checkpoint.restore(prefix).expect_partial()
+    metrics = tuple(float(value) for value in evaluate_model1(model, dataset=dataset))
+    # Sonnet creates variables lazily, so verify model restoration after prediction.
+    status.assert_existing_objects_matched()
+    return metrics
+
+
+def write_metric_header(output_file, split: str) -> None:
+    output_file.write("Steps\t" + "\t".join(f"{split}_{name}" for name in METRIC_NAMES) + "\n")
+
+
+def write_metrics(output_file, step: int, metrics) -> None:
+    output_file.write(f"{step}\t" + "\t".join(str(value) for value in metrics) + "\n")
+    output_file.flush()
+
+
+def run_validation(args: argparse.Namespace) -> None:
+    load_runtime()
+    dataset = get_dataset(args.human_dataset, "valid").batch(1).prefetch(args.prefetch_size)
+    best = None
+    with open(args.val_output, "w", encoding="utf-8") as output_file:
+        write_metric_header(output_file, "Val")
+        for step in range(args.val_start, args.val_stop + 1, args.val_interval):
+            prefix = os.path.join(args.checkpoint_dir, f"{args.checkpoint_name}-{step}")
+            if not tf.io.gfile.exists(prefix + ".index"):
+                print(f"Skipping missing checkpoint: {prefix}")
+                continue
+            metrics = score_checkpoint(prefix, dataset)
+            write_metrics(output_file, step, metrics)
+            print(f"Validation step {step}: Val_All={metrics[0]}")
+            if not math.isfinite(metrics[0]):
+                print(f"Skipping selection for step {step}: Val_All is not finite.")
+                continue
+            # Strict comparison keeps the earliest step when scores are equal.
+            if best is None or metrics[0] > best["validation_metrics"]["All"]:
+                best = {
+                    "step": step,
+                    "source_checkpoint": os.path.abspath(prefix),
+                    "dataset": args.human_dataset,
+                    "selection_metric": "Val_All",
+                    "validation_metrics": dict(zip(METRIC_NAMES, metrics)),
+                }
+
+    if best is None:
+        raise ValueError("No checkpoint with a finite Val_All score was found; no model selected.")
+
+    best_dir = os.path.dirname(selection_path(args))
+    os.makedirs(best_dir, exist_ok=True)
+    prefix = best["source_checkpoint"]
+    saved_name = os.path.basename(prefix)
+    # Keep a separate copy so training checkpoint retention cannot delete the final model.
+    for source in checkpoint_files(prefix):
+        tf.io.gfile.copy(source, os.path.join(best_dir, saved_name) + source[len(prefix):], overwrite=True)
+    best["checkpoint"] = saved_name
+    # Group metrics may be undefined for constant tracks; write valid JSON nulls.
+    best["validation_metrics"] = {
+        name: value if math.isfinite(value) else None
+        for name, value in best["validation_metrics"].items()
+    }
+    with open(selection_path(args) + ".tmp", "w", encoding="utf-8") as output_file:
+        json.dump(best, output_file, indent=2, allow_nan=False)
+        output_file.write("\n")
+    os.replace(selection_path(args) + ".tmp", selection_path(args))
+    print(f"Selected final model: step {best['step']}, Val_All={best['validation_metrics']['All']}")
+    print(f"Selection saved to {selection_path(args)}")
 
 
 def run_eval(args: argparse.Namespace) -> None:
+    path = selection_path(args)
+    if not os.path.isfile(path):
+        raise FileNotFoundError(f"No selected model at {path}. Run --mode validation first.")
+    with open(path, encoding="utf-8") as input_file:
+        best = json.load(input_file)
+    if best["dataset"] != args.human_dataset:
+        raise ValueError("--human-dataset must match the dataset used for validation.")
     load_runtime()
-    human_val_dataset = get_dataset(args.human_dataset, "valid").batch(1).prefetch(args.prefetch_size)
-    human_test_dataset = get_dataset(args.human_dataset, "test").batch(1).prefetch(args.prefetch_size)
-
-    with open(args.eval_output, "a", encoding="utf-8") as output_file:
-        output_file.write(EVAL_HEADER)
-
-    for step in eval_steps(args):
-        model = build_model()
-        learning_rate = tf.Variable(0.0, trainable=False, name="learning_rate")
-        learning_rate.assign(args.learning_rate)
-        optimizer = build_optimizer(learning_rate)
-        checkpoint_manager = build_checkpoint_manager(
-            model,
-            optimizer,
-            args.checkpoint_dir,
-            args.checkpoint_name,
-            args.max_to_keep,
-        )
-        restore_checkpoint_at_step(
-            checkpoint_manager,
-            args.checkpoint_dir,
-            args.checkpoint_name,
-            step,
-        )
-
-        pcc_val = evaluate_model1(
-            model,
-            dataset=human_val_dataset,
-            max_steps=args.max_eval_steps,
-        )
-        pcc_test = evaluate_model1(
-            model,
-            dataset=human_test_dataset,
-            max_steps=args.max_eval_steps,
-        )
-
-        with open(args.eval_output, "a", encoding="utf-8") as output_file:
-            output_file.write(f"{step}\t")
-            output_file.write("\t".join(str(value) for value in pcc_val))
-            output_file.write("\t")
-            output_file.write("\t".join(str(value) for value in pcc_test[1:]))
-            output_file.write("\n")
+    prefix = os.path.join(os.path.dirname(path), best["checkpoint"])
+    checkpoint_files(prefix)
+    dataset = get_dataset(args.human_dataset, "test").batch(1).prefetch(args.prefetch_size)
+    metrics = score_checkpoint(prefix, dataset)
+    if not math.isfinite(metrics[0]):
+        raise ValueError("Test_All is not finite; final performance cannot be reported.")
+    with open(args.eval_output, "w", encoding="utf-8") as output_file:
+        write_metric_header(output_file, "Test")
+        write_metrics(output_file, best["step"], metrics)
+    print(f"Evaluation of selected step {best['step']}: Test_All={metrics[0]}")
+    print(f"Test metrics saved to {args.eval_output}")
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train or evaluate Primformer.")
-    parser.add_argument("--mode", choices=("train", "eval"), default="train")
+    parser = argparse.ArgumentParser(description="Train, select on validation, or evaluate Primformer on test data.")
+    parser.add_argument("--mode", choices=("train", "validation", "eval"), default="train")
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--total-steps", type=int, default=60000)
     parser.add_argument("--learning-rate", type=float, default=0.0001)
@@ -337,18 +378,24 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser.add_argument("--shuffle-buffer-size", type=int, default=1000)
     parser.add_argument("--repeat-count", type=int, default=3)
     parser.add_argument("--prefetch-size", type=int, default=2)
-    parser.add_argument("--eval-start", type=int, default=1000)
-    parser.add_argument("--eval-stop", type=int, default=60000)
-    parser.add_argument("--eval-interval", type=int, default=1000)
-    parser.add_argument("--eval-output", default=DEFAULT_EVAL_OUTPUT)
-    parser.add_argument("--max-eval-steps", type=int, default=None)
-    return parser.parse_args(argv)
+    parser.add_argument("--val-start", type=int, default=1000)
+    parser.add_argument("--val-stop", type=int, default=60000)
+    parser.add_argument("--val-interval", type=int, default=1000)
+    parser.add_argument("--val-output", default="validation.tsv")
+    parser.add_argument("--eval-output", default="evaluation.tsv")
+    args = parser.parse_args(argv)
+    if args.mode == "validation":
+        if args.val_start < 0 or args.val_stop < args.val_start or args.val_interval <= 0:
+            parser.error("Require 0 <= --val-start <= --val-stop and --val-interval > 0.")
+    return args
 
 
 def main(argv: Optional[Sequence[str]] = None) -> None:
     args = parse_args(argv)
     if args.mode == "train":
         run_train(args)
+    elif args.mode == "validation":
+        run_validation(args)
     else:
         run_eval(args)
 

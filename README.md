@@ -2,7 +2,7 @@
 
 Primformer is a Monkey ENCODE-enhanced primate foundation model for sequence
 activity prediction. The model implementation is consolidated in `src/model.py`,
-and training/evaluation are controlled through `Primformer.py`.
+and training, validation, and evaluation are controlled through `Primformer.py`.
 
 ## Model Architecture
 
@@ -12,8 +12,8 @@ and training/evaluation are controlled through `Primformer.py`.
 
 - `src/model.py`: Primformer model definition, including the Enformer-style trunk
   and relative-position attention modules.
-- `Primformer.py`: unified command-line entry point for training and
-  evaluation.
+- `Primformer.py`: unified command-line entry point for training, validation-based
+  model selection, and final test evaluation.
 - `src/utils.py`: TFRecord loading, metadata parsing, and evaluation metrics.
 - `src/HumanData.txt` and `src/Human_wigs_class.txt`: metadata used by the human
   evaluation routine.
@@ -49,8 +49,8 @@ tfrecords/test-*.tfr
 The default training configuration uses:
 
 - Human training dataset: `Human`
-- Monkey training dataset: `Monkey`
-- Human validation/test dataset for evaluation: `Human`
+- Monkey training dataset: `MonkeyFull`
+- Human validation/test dataset: `Human`
 
 Edit `organism_path()` in `src/utils.py` if your TFRecord datasets are stored in a
 different root directory.
@@ -87,21 +87,63 @@ Common options include:
 - `--learning-rate-decay`: decay factor, default `0.95`.
 - `--checkpoint-dir`: checkpoint output/restore directory.
 
-## Evaluation
+## Validation and Model Selection
 
-Evaluate saved checkpoints with:
+After training, compare saved checkpoints using only `tfrecords/valid-*.tfr`:
+
+```bash
+python Primformer.py --mode validation \
+  --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
+  --checkpoint-name MeHSA \
+  --val-start 1000 \
+  --val-stop 60000 \
+  --val-interval 1000 \
+  --val-output validation.tsv
+```
+
+The final model is the step with the highest `Val_All`: the mean per-track
+Pearson correlation coefficient across all human output tracks, computed on the
+complete validation split. The earliest step wins a tie. Missing checkpoints
+are skipped with a message; non-finite `Val_All` scores cannot win. Validation
+fails if no eligible checkpoint is found. Test data is not read during selection.
+
+`validation.tsv` contains `Steps`, `Val_All`, `Val_CAGE`, `Val_RNA`, `Val_ATAC`,
+`Val_ChIPH`, and `Val_ChIPT`. Each run overwrites this table.
+After a successful scan, the selected checkpoint is copied into
+`<checkpoint-dir>/best_model/`, alongside `selection.json`, which records the
+selected step, validation metrics, and dataset. This copy remains available even
+if training later removes the original checkpoint through its retention policy.
+Keep the `best_model` directory together when moving the final model.
+
+## Evaluation on the Test Set
+
+Run evaluation after validation has selected the final model:
 
 ```bash
 python Primformer.py --mode eval \
   --checkpoint-dir /home/users/zyfeng/DataSet/SavedModel/FullAdult/ \
-  --checkpoint-name MeHSA \
-  --eval-start 1000 \
-  --eval-stop 60000 \
-  --eval-interval 1000 \
-  --eval-output Pimfomer_loss.err
+  --eval-output evaluation.tsv
 ```
-Useful evaluation options:
+
+Evaluation reads `best_model/selection.json`, restores only the selected
+checkpoint, and runs once over the complete `tfrecords/test-*.tfr` split. It does
+not scan checkpoints or select a model using test performance. Use the same
+`--human-dataset` as validation (default `Human`). Run training and validation
+sequentially so candidate checkpoints remain stable during selection.
+
+`evaluation.tsv` contains one result row with `Steps`, `Test_All`, `Test_CAGE`,
+`Test_RNA`, `Test_ATAC`, `Test_ChIPH`, and `Test_ChIPT`. Each run overwrites this
+table. These final predictive-performance metrics are Pearson correlation
+coefficients, not classification accuracy percentages. Undefined group
+correlations may be `nan`; a non-finite `Test_All` causes evaluation to fail.
+
+The former checkpoint-scan options `--eval-start`, `--eval-stop`, and
+`--eval-interval` are now `--val-start`, `--val-stop`, and `--val-interval`.
+The `--max-eval-steps` option has been removed: validation and final evaluation
+always use their complete splits.
+
+Show all command-line options:
 
 ```bash
-python Primformer.py --mode eval --help
+python Primformer.py --help
 ```

@@ -30,7 +30,11 @@ def get_metadata(organism):
 
 
 def tfrecord_files(organism, subset):
-  return sorted(tf.io.gfile.glob(os.path.join(organism_path(organism), 'tfrecords', f'{subset}-*.tfr')), key=lambda x: int(x.split('-')[-1].split('.')[0]))
+  pattern = os.path.join(organism_path(organism), 'tfrecords', f'{subset}-*.tfr')
+  files = sorted(tf.io.gfile.glob(pattern), key=lambda x: int(x.split('-')[-1].split('.')[0]))
+  if not files:
+    raise FileNotFoundError(f'No TFRecord files found: {pattern}')
+  return files
 
 
 def deserialize(serialized_example, metadata):
@@ -271,6 +275,8 @@ def evaluate_model0(model, dataset, max_steps=None):
     return pcc_all0,pcc_cage0,pcc_atac0,pcc_chiph0,pcc_chipt0
 
 def evaluate_model1(model, dataset, max_steps=None):
+    if max_steps is not None and max_steps <= 0:
+        raise ValueError('max_steps must be positive.')
     @tf.function
     def predict(x):
         return model(x, is_training=False)["human1"]
@@ -282,8 +288,9 @@ def evaluate_model1(model, dataset, max_steps=None):
     metric_chiph = MetricDict({'PearsonR': PearsonR(reduce_axis=(0,1))})
     metric_chipt = MetricDict({'PearsonR': PearsonR(reduce_axis=(0,1))})
     
+    num_batches = 0
     for i, batch in enumerate(dataset):
-        if max_steps is not None and i > max_steps:
+        if max_steps is not None and i >= max_steps:
             break
         predicted_values = predict(batch['sequence'])
         metric_all.update_state(batch['target'], predicted_values)
@@ -292,6 +299,10 @@ def evaluate_model1(model, dataset, max_steps=None):
         metric_atac.update_state(tf.gather(batch['target'],ATAC2,axis=2), tf.gather(predicted_values,ATAC2,axis=2))
         metric_chiph.update_state(tf.gather(batch['target'],ChIPH2,axis=2), tf.gather(predicted_values,ChIPH2,axis=2))
         metric_chipt.update_state(tf.gather(batch['target'],ChIPT2,axis=2), tf.gather(predicted_values,ChIPT2,axis=2))
+        num_batches += 1
+
+    if num_batches == 0:
+        raise ValueError('Cannot compute Pearson correlation on an empty dataset.')
         
     pcc_all = [v.numpy().mean() for k, v in metric_all.result().items()][0]
     pcc_cage = [v.numpy().mean() for k, v in metric_cage.result().items()][0]
