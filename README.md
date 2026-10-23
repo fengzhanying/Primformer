@@ -49,7 +49,7 @@ tfrecords/test-*.tfr
 The default training configuration uses:
 
 - Human training dataset: `Human`
-- Monkey training dataset: `MonkeyFull`
+- Monkey training dataset: `Monkey`
 - Human validation/test dataset: `Human`
 
 Edit `organism_path()` in `src/utils.py` if your TFRecord datasets are stored in a
