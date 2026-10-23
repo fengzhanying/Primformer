@@ -8,6 +8,24 @@ and training, validation, and evaluation are controlled through `Primformer.py`.
 
 ![Primformer model architecture](Model.png)
 
+### Code Attribution
+
+The model architecture and implementation in [`src/model.py`](src/model.py) are
+adapted from the official [Enformer code released by DeepMind](https://github.com/google-deepmind/deepmind-research/tree/master/enformer),
+specifically [`enformer.py`](https://github.com/google-deepmind/deepmind-research/blob/master/enformer/enformer.py)
+and [`attention_module.py`](https://github.com/google-deepmind/deepmind-research/blob/master/enformer/attention_module.py).
+These upstream components provide the convolutional and Transformer backbone
+and relative-position attention. In Primformer, they are consolidated into a
+single module and adapted to support configurable output heads for human and
+monkey sequence activity prediction.
+
+The original code is copyright 2021 DeepMind Technologies Limited and is
+licensed under the [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0).
+The original copyright and license notice are retained in `src/model.py`.
+Please also credit the original Enformer work described by Avsec et al.,
+*Effective gene expression prediction from sequence by integrating long-range
+interactions*, when using this implementation in research.
+
 ## Repository Layout
 
 - `src/model.py`: Primformer model definition, including the Enformer-style trunk

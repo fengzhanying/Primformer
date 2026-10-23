@@ -13,8 +13,18 @@
 # limitations under the License.
 """Primformer model definition.
 
-This module contains both the Enformer-style trunk and the relative-position
-attention components used by Primformer.
+Adapted from DeepMind's Enformer implementation:
+https://github.com/google-deepmind/deepmind-research/tree/master/enformer
+
+Upstream files: enformer.py and attention_module.py (copyright 2021 DeepMind
+Technologies Limited, Apache License 2.0; original notice retained above).
+These files are consolidated here into a single module containing the
+convolutional and Transformer backbone and relative-position attention.
+Primformer modifications include configurable output heads used for human
+and monkey sequence activity prediction.
+
+Original work: Avsec et al., "Effective gene expression prediction from sequence
+by integrating long-range interactions".
 """
 import inspect
 from typing import Any, Callable, Dict, Iterable, List, Optional, Text, Union
